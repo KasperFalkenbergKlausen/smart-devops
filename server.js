@@ -148,6 +148,86 @@ app.post('/api/workitem-lookup', async (req, res) => {
   }
 });
 
+// DELETE /api/workitem/:id
+app.delete('/api/workitem/:id', async (req, res) => {
+  const { org, project, pat } = req.body;
+  const { id } = req.params;
+
+  if (!org || !project || !pat || !id) {
+    return res.status(400).json({ error: 'Organization, Project, PAT and ID are required.' });
+  }
+
+  try {
+    const url = `https://dev.azure.com/${encodeURIComponent(org)}/${encodeURIComponent(project)}/_apis/wit/workitems/${encodeURIComponent(id)}?api-version=7.1-preview.3`;
+    const response = await fetch(url, {
+      method: 'DELETE',
+      headers: {
+        'Accept': 'application/json',
+        Authorization: `Basic ${Buffer.from(`:${pat}`).toString('base64')}`
+      }
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      let message = errorText;
+      try {
+        const parsed = JSON.parse(errorText);
+        message = parsed.message || errorText;
+      } catch {}
+      throw new Error(`Kunne ikke slette #${id}: ${message} (Status ${response.status})`);
+    }
+
+    return res.json({ success: true, id, message: `Work item #${id} blev slettet.` });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/workitems/delete (Bulk delete)
+app.post('/api/workitems/delete', async (req, res) => {
+  const { org, project, pat, ids } = req.body;
+
+  if (!org || !project || !pat || !Array.isArray(ids) || ids.length === 0) {
+    return res.status(400).json({ error: 'Organization, Project, PAT and an array of IDs are required.' });
+  }
+
+  const deleted = [];
+  const errors = [];
+
+  for (const id of ids) {
+    try {
+      const url = `https://dev.azure.com/${encodeURIComponent(org)}/${encodeURIComponent(project)}/_apis/wit/workitems/${encodeURIComponent(id)}?api-version=7.1-preview.3`;
+      const response = await fetch(url, {
+        method: 'DELETE',
+        headers: {
+          'Accept': 'application/json',
+          Authorization: `Basic ${Buffer.from(`:${pat}`).toString('base64')}`
+        }
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        let message = errorText;
+        try {
+          const parsed = JSON.parse(errorText);
+          message = parsed.message || errorText;
+        } catch {}
+        errors.push({ id, error: message });
+      } else {
+        deleted.push(id);
+      }
+    } catch (err) {
+      errors.push({ id, error: err.message });
+    }
+  }
+
+  return res.json({
+    success: errors.length === 0,
+    deleted,
+    errors
+  });
+});
+
 // POST /api/import
 app.post('/api/import', async (req, res) => {
   const { org, project, pat, existingFeatureId, features } = req.body;
