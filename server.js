@@ -158,7 +158,7 @@ app.delete('/api/workitem/:id', async (req, res) => {
   }
 
   try {
-    const url = `https://dev.azure.com/${encodeURIComponent(org)}/${encodeURIComponent(project)}/_apis/wit/workitems/${encodeURIComponent(id)}?api-version=7.1-preview.3`;
+    const url = `https://dev.azure.com/${encodeURIComponent(org)}/${encodeURIComponent(project)}/_apis/wit/workitems/${encodeURIComponent(id)}?destroy=true&api-version=7.1-preview.3`;
     const response = await fetch(url, {
       method: 'DELETE',
       headers: {
@@ -177,7 +177,7 @@ app.delete('/api/workitem/:id', async (req, res) => {
       throw new Error(`Kunne ikke slette #${id}: ${message} (Status ${response.status})`);
     }
 
-    return res.json({ success: true, id, message: `Work item #${id} blev slettet.` });
+    return res.json({ success: true, id, message: `Work item #${id} blev slettet permanent.` });
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
@@ -196,7 +196,7 @@ app.post('/api/workitems/delete', async (req, res) => {
 
   for (const id of ids) {
     try {
-      const url = `https://dev.azure.com/${encodeURIComponent(org)}/${encodeURIComponent(project)}/_apis/wit/workitems/${encodeURIComponent(id)}?api-version=7.1-preview.3`;
+      const url = `https://dev.azure.com/${encodeURIComponent(org)}/${encodeURIComponent(project)}/_apis/wit/workitems/${encodeURIComponent(id)}?destroy=true&api-version=7.1-preview.3`;
       const response = await fetch(url, {
         method: 'DELETE',
         headers: {
