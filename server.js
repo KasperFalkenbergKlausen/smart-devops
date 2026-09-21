@@ -163,7 +163,11 @@ async function deleteWorkItemAdo({ org, project, pat, id }) {
       });
 
       if (response.ok) {
-        return true;
+        const text = await response.text();
+        let data = {};
+        try { data = JSON.parse(text); } catch {}
+        console.log(`[Azure DevOps DELETE] Work item #${id} respons:`, data);
+        return { ok: true, data, isDestroyed: url.includes('destroy=true') };
       }
       const errText = await response.text();
       try {
