@@ -139,50 +139,242 @@ async function getWorkItem({ org, project, pat, id }) {
 }
 
 /**
- * Deletes a work item with fallback from permanent purge to soft-delete
+ * Unlinks all relations on the work item itself and from related parent/child work items
  */
-async function deleteWorkItemAdo({ org, project, pat, id }) {
-  const attempts = [
-    // 1. Collection-level permanent delete
-    `https://dev.azure.com/${encodeURIComponent(org)}/_apis/wit/workitems/${encodeURIComponent(id)}?destroy=true&api-version=7.1-preview.3`,
-    // 2. Collection-level soft delete
-    `https://dev.azure.com/${encodeURIComponent(org)}/_apis/wit/workitems/${encodeURIComponent(id)}?api-version=7.1-preview.3`,
-    // 3. Project-scoped delete
-    `https://dev.azure.com/${encodeURIComponent(org)}/${encodeURIComponent(project)}/_apis/wit/workitems/${encodeURIComponent(id)}?api-version=7.1-preview.3`
-  ];
+async function unlinkRelations({ org, project, pat, id }) {
+  try {
+    const itemUrl = `https://dev.azure.com/${encodeURIComponent(org)}/_apis/wit/workitems/${encodeURIComponent(id)}?$expand=relations&api-version=7.1-preview.3`;
+    const res = await fetch(itemUrl, {
+      headers: {
+        'Accept': 'application/json',
+        Authorization: `Basic ${Buffer.from(`:${pat}`).toString('base64')}`
+      }
+    });
 
-  let lastError = '';
-  for (const url of attempts) {
-    try {
-      const response = await fetch(url, {
-        method: 'DELETE',
+    if (!res.ok) return;
+    const item = await res.json();
+    const relations = item.relations || [];
+
+    // 1. Fjern relationer på andre forældre/børn work items
+    for (const rel of relations) {
+      if (rel.url) {
+        const match = rel.url.match(/workitems\/(\d+)/i);
+        if (match) {
+          const relatedId = match[1];
+          try {
+            const relatedUrl = `https://dev.azure.com/${encodeURIComponent(org)}/_apis/wit/workitems/${encodeURIComponent(relatedId)}?$expand=relations&api-version=7.1-preview.3`;
+            const relRes = await fetch(relatedUrl, {
+              headers: {
+                'Accept': 'application/json',
+                Authorization: `Basic ${Buffer.from(`:${pat}`).toString('base64')}`
+              }
+            });
+
+            if (relRes.ok) {
+              const relatedItem = await relRes.json();
+              const relatedRels = relatedItem.relations || [];
+              const indicesToRemove = [];
+              relatedRels.forEach((r, idx) => {
+                if (r.url) {
+                  const rMatch = r.url.match(/workitems\/(\d+)/i);
+                  if (rMatch && rMatch[1] === String(id)) {
+                    indicesToRemove.push(idx);
+                  }
+                }
+              });
+
+              if (indicesToRemove.length > 0) {
+                const patchOps = indicesToRemove.reverse().map(idx => ({
+                  op: 'remove',
+                  path: `/relations/${idx}`
+                }));
+
+                await fetch(`https://dev.azure.com/${encodeURIComponent(org)}/_apis/wit/workitems/${encodeURIComponent(relatedId)}?api-version=7.1-preview.3`, {
+                  method: 'PATCH',
+                  headers: {
+                    'Content-Type': 'application/json-patch+json',
+                    'Accept': 'application/json',
+                    Authorization: `Basic ${Buffer.from(`:${pat}`).toString('base64')}`
+                  },
+                  body: JSON.stringify(patchOps)
+                });
+                console.log(`[Azure DevOps UNLINK] Fjernede link på forælder #${relatedId} til #${id}`);
+              }
+            }
+          } catch (e) {
+            console.warn(`[Azure DevOps UNLINK] Kunne ikke afkoble #${relatedId}:`, e.message);
+          }
+        }
+      }
+    }
+
+    // 2. Fjern alle relationer på SELVE work itemet (#id)
+    if (relations.length > 0) {
+      const selfPatchOps = relations.map((_, idx) => ({
+        op: 'remove',
+        path: `/relations/${idx}`
+      })).reverse();
+
+      await fetch(`https://dev.azure.com/${encodeURIComponent(org)}/_apis/wit/workitems/${encodeURIComponent(id)}?api-version=7.1-preview.3`, {
+        method: 'PATCH',
         headers: {
+          'Content-Type': 'application/json-patch+json',
           'Accept': 'application/json',
           Authorization: `Basic ${Buffer.from(`:${pat}`).toString('base64')}`
-        }
+        },
+        body: JSON.stringify(selfPatchOps)
+      });
+      console.log(`[Azure DevOps UNLINK] Fjernede ${selfPatchOps.length} relation(er) på selve #${id}`);
+    }
+  } catch (err) {
+    console.warn(`[Azure DevOps UNLINK] Advarsel ved fjernelse af relationer for #${id}:`, err.message);
+  }
+}
+
+/**
+ * Deletes/removes a work item: unlinks relations, clears tags, and sets State="Removed" (or "Closed")
+ */
+async function deleteWorkItemAdo({ org, project, pat, id }) {
+  // 1. Unlink fra forældre og børn, og ryd relationer på selve elementet
+  await unlinkRelations({ org, project, pat, id });
+
+  // 2. Ryd tags og sæt status til "Removed" (eller "Closed") på selve elementet
+  let finalState = 'Removed';
+  let patchSuccess = false;
+  let patchError = '';
+
+  // Prøv både remove af tags og opdatering af State
+  const patchAttempts = [
+    [
+      { op: 'remove', path: '/fields/System.Tags' },
+      { op: 'add', path: '/fields/System.State', value: 'Removed' }
+    ],
+    [
+      { op: 'add', path: '/fields/System.Tags', value: '' },
+      { op: 'add', path: '/fields/System.State', value: 'Removed' }
+    ],
+    [
+      { op: 'remove', path: '/fields/System.Tags' },
+      { op: 'add', path: '/fields/System.State', value: 'Closed' }
+    ],
+    [
+      { op: 'add', path: '/fields/System.Tags', value: '' },
+      { op: 'add', path: '/fields/System.State', value: 'Closed' }
+    ],
+    [
+      { op: 'add', path: '/fields/System.State', value: 'Removed' }
+    ],
+    [
+      { op: 'add', path: '/fields/System.State', value: 'Closed' }
+    ]
+  ];
+
+  for (const patchDoc of patchAttempts) {
+    try {
+      const patchRes = await fetch(`https://dev.azure.com/${encodeURIComponent(org)}/_apis/wit/workitems/${encodeURIComponent(id)}?api-version=7.1-preview.3`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json-patch+json',
+          'Accept': 'application/json',
+          Authorization: `Basic ${Buffer.from(`:${pat}`).toString('base64')}`
+        },
+        body: JSON.stringify(patchDoc)
       });
 
-      if (response.ok) {
-        const text = await response.text();
-        let data = {};
-        try { data = JSON.parse(text); } catch {}
-        console.log(`[Azure DevOps DELETE] Work item #${id} respons:`, data);
-        return { ok: true, data, isDestroyed: url.includes('destroy=true') };
-      }
-      const errText = await response.text();
-      try {
-        const parsed = JSON.parse(errText);
-        lastError = parsed.message || errText;
-      } catch {
-        lastError = errText;
+      if (patchRes.ok) {
+        patchSuccess = true;
+        const patchedItem = await patchRes.json();
+        finalState = patchedItem.fields?.['System.State'] || 'Removed';
+        console.log(`[Azure DevOps REMOVE] Work item #${id} opdateret: State="${finalState}", tags ryddet.`);
+        break;
+      } else {
+        patchError = await patchRes.text();
       }
     } catch (e) {
-      lastError = e.message;
+      patchError = e.message;
     }
   }
 
-  throw new Error(lastError || `Kunne ikke slette work item #${id}`);
+  if (patchSuccess) {
+    return {
+      ok: true,
+      state: finalState,
+      message: `Work item #${id} blev afkoblet, tags ryddet og status sat til '${finalState}'.`
+    };
+  }
+
+  throw new Error(`Kunne ikke opdatere #${id}: ${patchError}`);
 }
+
+// POST /api/workitem/:id/clean-links (Fjern alle child relationer fra en User Story eller Feature)
+app.post('/api/workitem/:id/clean-links', async (req, res) => {
+  const { org, project, pat } = req.body;
+  const { id } = req.params;
+
+  if (!org || !project || !pat || !id) {
+    return res.status(400).json({ error: 'Organization, Project, PAT and ID are required.' });
+  }
+
+  try {
+    const itemUrl = `https://dev.azure.com/${encodeURIComponent(org)}/_apis/wit/workitems/${encodeURIComponent(id)}?$expand=relations&api-version=7.1-preview.3`;
+    const getRes = await fetch(itemUrl, {
+      headers: {
+        'Accept': 'application/json',
+        Authorization: `Basic ${Buffer.from(`:${pat}`).toString('base64')}`
+      }
+    });
+
+    if (!getRes.ok) {
+      const err = await getRes.text();
+      throw new Error(`Kunne ikke hente #${id}: ${err}`);
+    }
+
+    const item = await getRes.json();
+    const relations = item.relations || [];
+    const childIndices = [];
+
+    relations.forEach((r, idx) => {
+      if (r.rel === 'System.LinkTypes.Hierarchy-Forward' || r.name === 'Child') {
+        childIndices.push(idx);
+      }
+    });
+
+    const patchOps = childIndices.reverse().map(idx => ({
+      op: 'remove',
+      path: `/relations/${idx}`
+    }));
+
+    // Ryd tags på elementet
+    patchOps.push({
+      op: 'add',
+      path: '/fields/System.Tags',
+      value: ''
+    });
+
+    const patchRes = await fetch(`https://dev.azure.com/${encodeURIComponent(org)}/_apis/wit/workitems/${encodeURIComponent(id)}?api-version=7.1-preview.3`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json-patch+json',
+        'Accept': 'application/json',
+        Authorization: `Basic ${Buffer.from(`:${pat}`).toString('base64')}`
+      },
+      body: JSON.stringify(patchOps)
+    });
+
+    if (!patchRes.ok) {
+      const err = await patchRes.text();
+      throw new Error(`Kunne ikke opdatere relationer/tags på #${id}: ${err}`);
+    }
+
+    return res.json({
+      success: true,
+      unlinkedCount: childIndices.length,
+      message: `Renset #${id}: Fjernede ${childIndices.length} underordnede link(s) og ryddede alle tags.`
+    });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
 
 // POST /api/workitem-lookup
 app.post('/api/workitem-lookup', async (req, res) => {
