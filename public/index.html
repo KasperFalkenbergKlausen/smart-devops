@@ -1,0 +1,1062 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Azure DevOps Work Item Importer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0d1117;
+      --card-bg: #161b22;
+      --card-border: #30363d;
+      --text: #c9d1d9;
+      --text-muted: #8b949e;
+      --text-heading: #f0f6fc;
+      --primary: #238636;
+      --primary-hover: #2ea043;
+      --accent: #1f6feb;
+      --accent-hover: #388bfd;
+      --feature-color: #a371f7;
+      --story-color: #58a6ff;
+      --task-color: #3fb950;
+      --error-color: #f85149;
+      --warning-color: #d29922;
+      --font-main: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      --font-code: 'Fira Code', monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: var(--font-main);
+      min-height: 100vh;
+      padding: 24px;
+      line-height: 1.5;
+    }
+
+    .container {
+      max-width: 1300px;
+      margin: 0 auto;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 24px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--card-border);
+    }
+
+    .logo-area {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .logo-icon {
+      width: 36px;
+      height: 36px;
+      background: linear-gradient(135deg, #0078d4, #005a9e);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-weight: 800;
+      font-size: 18px;
+      box-shadow: 0 4px 12px rgba(0, 120, 212, 0.4);
+    }
+
+    h1 {
+      font-size: 1.4rem;
+      font-weight: 700;
+      color: var(--text-heading);
+    }
+
+    .subtitle {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+    }
+
+    @media (max-width: 992px) {
+      .grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .card-title {
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: var(--text-heading);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    label {
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--text-heading);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .label-hint {
+      font-size: 0.75rem;
+      font-weight: 400;
+      color: var(--text-muted);
+    }
+
+    input[type="text"],
+    input[type="password"],
+    textarea {
+      background: #0d1117;
+      border: 1px solid var(--card-border);
+      border-radius: 6px;
+      color: var(--text-heading);
+      font-family: inherit;
+      font-size: 0.9rem;
+      padding: 10px 12px;
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    input:focus,
+    textarea:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(31, 111, 235, 0.25);
+    }
+
+    .input-with-action {
+      position: relative;
+      display: flex;
+      align-items: center;
+    }
+
+    .input-with-action input {
+      width: 100%;
+      padding-right: 40px;
+    }
+
+    .toggle-pwd-btn {
+      position: absolute;
+      right: 8px;
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      padding: 4px;
+      display: flex;
+      align-items: center;
+    }
+
+    .toggle-pwd-btn:hover {
+      color: var(--text);
+    }
+
+    .row-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    textarea {
+      font-family: var(--font-code);
+      font-size: 0.85rem;
+      min-height: 280px;
+      resize: vertical;
+      line-height: 1.4;
+      tab-size: 2;
+    }
+
+    .btn-row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    button {
+      font-family: inherit;
+      font-size: 0.85rem;
+      font-weight: 600;
+      border-radius: 6px;
+      padding: 8px 14px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.15s ease-in-out;
+      border: 1px solid transparent;
+    }
+
+    .btn-primary {
+      background-color: var(--primary);
+      color: #fff;
+      font-size: 0.95rem;
+      padding: 10px 18px;
+    }
+
+    .btn-primary:hover:not(:disabled) {
+      background-color: var(--primary-hover);
+      box-shadow: 0 4px 12px rgba(35, 134, 54, 0.3);
+    }
+
+    .btn-secondary {
+      background: #21262d;
+      border-color: var(--card-border);
+      color: var(--text);
+    }
+
+    .btn-secondary:hover {
+      background: #30363d;
+      color: var(--text-heading);
+    }
+
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    /* Badges */
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      font-size: 0.75rem;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .badge-feature {
+      background: rgba(163, 113, 247, 0.15);
+      color: var(--feature-color);
+      border: 1px solid rgba(163, 113, 247, 0.3);
+    }
+
+    .badge-story {
+      background: rgba(88, 166, 255, 0.15);
+      color: var(--story-color);
+      border: 1px solid rgba(88, 166, 255, 0.3);
+    }
+
+    .badge-task {
+      background: rgba(63, 185, 80, 0.15);
+      color: var(--task-color);
+      border: 1px solid rgba(63, 185, 80, 0.3);
+    }
+
+    .badge-existing {
+      background: rgba(210, 153, 34, 0.15);
+      color: var(--warning-color);
+      border: 1px solid rgba(210, 153, 34, 0.3);
+    }
+
+    .badge-tag {
+      background: #21262d;
+      color: #8b949e;
+      border: 1px solid #30363d;
+      font-size: 0.7rem;
+      font-weight: 500;
+      text-transform: none;
+      padding: 1px 6px;
+      border-radius: 4px;
+    }
+
+    /* Preview Tree */
+    .tree-container {
+      background: #0d1117;
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      padding: 16px;
+      min-height: 280px;
+      max-height: 520px;
+      overflow-y: auto;
+    }
+
+    .tree-node {
+      margin-left: 18px;
+      position: relative;
+      padding-left: 12px;
+      border-left: 2px dashed #30363d;
+      margin-top: 8px;
+      margin-bottom: 8px;
+    }
+
+    .tree-node.root-node {
+      margin-left: 0;
+      border-left: none;
+      padding-left: 0;
+    }
+
+    .node-header {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      padding: 4px 0;
+    }
+
+    .node-title {
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: var(--text-heading);
+    }
+
+    .node-desc {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      margin-left: 24px;
+      margin-bottom: 4px;
+    }
+
+    .preview-stats {
+      display: flex;
+      gap: 12px;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+
+    .preview-stats span {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    /* Logs & Feedback */
+    .log-panel {
+      margin-top: 24px;
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      padding: 20px;
+    }
+
+    .log-list {
+      margin-top: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      max-height: 300px;
+      overflow-y: auto;
+    }
+
+    .log-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 12px;
+      background: #0d1117;
+      border: 1px solid var(--card-border);
+      border-radius: 6px;
+      font-size: 0.85rem;
+    }
+
+    .log-item.success {
+      border-left: 4px solid var(--task-color);
+    }
+
+    .log-item.error {
+      border-left: 4px solid var(--error-color);
+    }
+
+    .log-link {
+      color: var(--accent);
+      text-decoration: none;
+      font-weight: 600;
+    }
+
+    .log-link:hover {
+      text-decoration: underline;
+    }
+
+    .alert {
+      padding: 12px 16px;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .alert-error {
+      background: rgba(248, 81, 73, 0.15);
+      border: 1px solid rgba(248, 81, 73, 0.4);
+      color: var(--error-color);
+    }
+
+    .alert-success {
+      background: rgba(63, 185, 80, 0.15);
+      border: 1px solid rgba(63, 185, 80, 0.4);
+      color: var(--task-color);
+    }
+
+    .spinner {
+      display: inline-block;
+      width: 14px;
+      height: 14px;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-radius: 50%;
+      border-top-color: #fff;
+      animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 40px 20px;
+      color: var(--text-muted);
+      font-size: 0.9rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="logo-area">
+        <div class="logo-icon">ADO</div>
+        <div>
+          <h1>Azure DevOps Work Item Importer</h1>
+          <div class="subtitle">Opret og tilknyt Features, User Stories og Tasks via REST API</div>
+        </div>
+      </div>
+    </header>
+
+    <div class="grid">
+      <!-- Venstre kolonne: Konfiguration & JSON -->
+      <div class="card">
+        <div class="card-title">
+          <span>1. Forbindelse & Konfiguration</span>
+        </div>
+
+        <div class="row-2">
+          <div class="form-group">
+            <label for="org">Organization (org)</label>
+            <input type="text" id="org" value="pfa" placeholder="f.eks. pfa" required />
+          </div>
+          <div class="form-group">
+            <label for="project">Project Name</label>
+            <input type="text" id="project" value="Agile" placeholder="f.eks. Agile" required />
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="pat">Personal Access Token (PAT)</label>
+          <div class="input-with-action">
+            <input type="password" id="pat" placeholder="Indtast din Azure DevOps PAT..." required />
+            <button type="button" class="toggle-pwd-btn" id="togglePat" title="Vis/skjul PAT">👁️</button>
+          </div>
+          <span class="label-hint">Kræver 'Work Items: Read & Write' tilladelse. Logges aldrig på serveren.</span>
+        </div>
+
+        <div class="form-group">
+          <label for="existingFeatureId">
+            Eksisterende Feature ID
+            <span class="label-hint">(Valgfrit - f.eks. 1042)</span>
+          </label>
+          <input type="text" id="existingFeatureId" placeholder="Efterlad tom for at oprette nye Features" />
+        </div>
+
+        <div class="card-title" style="margin-top: 8px;">
+          <span>2. JSON Data</span>
+          <div class="btn-row">
+            <input type="file" id="fileInput" accept=".json" style="display: none;" />
+            <button type="button" class="btn-secondary" onclick="document.getElementById('fileInput').click()">📁 Vælg fil</button>
+            <button type="button" class="btn-secondary" id="loadSampleBtn">📋 Indsæt Eksempel</button>
+            <button type="button" class="btn-secondary" id="formatJsonBtn">Formatér</button>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <textarea id="jsonInput" placeholder="Indsæt JSON struktur her..."></textarea>
+        </div>
+
+        <div style="display: flex; justify-content: flex-end; margin-top: 8px;">
+          <button type="button" class="btn-primary" id="importBtn" disabled>
+            <span id="btnSpinner" class="spinner" style="display: none;"></span>
+            <span id="btnText">🚀 Start Import til Azure DevOps</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Højre kolonne: Live Hierarki Preview -->
+      <div class="card">
+        <div class="card-title">
+          <span>Live Hierarki Preview</span>
+          <div class="preview-stats" id="previewStats">
+            <span id="statFeatures">0 Features</span>
+            <span id="statStories">0 Stories</span>
+            <span id="statTasks">0 Tasks</span>
+          </div>
+        </div>
+
+        <div id="previewAlert" class="alert alert-error" style="display: none;"></div>
+
+        <div class="tree-container" id="treePreview">
+          <div class="empty-state">
+            Indsæt gyldig JSON eller klik på "Indsæt Eksempel" for at se det hierarkiske preview.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Status & Log Panel -->
+    <div class="log-panel" id="logPanel" style="display: none;">
+      <div class="card-title">
+        <span>Import Status & Resultater</span>
+        <button type="button" class="btn-secondary" id="clearLogsBtn">Ryd log</button>
+      </div>
+      <div id="statusMessage" style="margin-top: 10px;"></div>
+      <div class="log-list" id="logList"></div>
+    </div>
+  </div>
+
+  <script>
+    const sampleData = [
+      {
+        "title": "Test Feature",
+        "description": "Eksempel på feature til test",
+        "tags": ["K2-opgradering"],
+        "userStories": [
+          {
+            "title": "Test A",
+            "description": "Beskrivelse for User Story Test A",
+            "tags": ["K2-opgradering"],
+            "tasks": [
+              {
+                "title": "Task 1",
+                "description": "Beskrivelse for Task 1 under Test A",
+                "tags": ["K2-opgradering"]
+              },
+              {
+                "title": "Task 2",
+                "description": "Beskrivelse for Task 2 under Test A",
+                "tags": ["K2-opgradering"]
+              }
+            ]
+          },
+          {
+            "title": "Test B",
+            "description": "Beskrivelse for User Story Test B",
+            "tags": ["K2-opgradering"],
+            "tasks": [
+              {
+                "title": "Task 1",
+                "description": "Beskrivelse for Task 1 under Test B",
+                "tags": ["K2-opgradering"]
+              },
+              {
+                "title": "Task 2",
+                "description": "Beskrivelse for Task 2 under Test B",
+                "tags": ["K2-opgradering"]
+              }
+            ]
+          }
+        ]
+      }
+    ];
+
+    const orgInput = document.getElementById('org');
+    const projectInput = document.getElementById('project');
+    const patInput = document.getElementById('pat');
+    const existingFeatureIdInput = document.getElementById('existingFeatureId');
+    const jsonInput = document.getElementById('jsonInput');
+    const treePreview = document.getElementById('treePreview');
+    const previewAlert = document.getElementById('previewAlert');
+    const importBtn = document.getElementById('importBtn');
+    const loadSampleBtn = document.getElementById('loadSampleBtn');
+    const formatJsonBtn = document.getElementById('formatJsonBtn');
+    const fileInput = document.getElementById('fileInput');
+    const togglePat = document.getElementById('togglePat');
+    const logPanel = document.getElementById('logPanel');
+    const logList = document.getElementById('logList');
+    const statusMessage = document.getElementById('statusMessage');
+    const clearLogsBtn = document.getElementById('clearLogsBtn');
+    const btnSpinner = document.getElementById('btnSpinner');
+    const btnText = document.getElementById('btnText');
+
+    const statFeatures = document.getElementById('statFeatures');
+    const statStories = document.getElementById('statStories');
+    const statTasks = document.getElementById('statTasks');
+
+    // Load saved settings from localStorage (defaults to pfa / Agile)
+    orgInput.value = localStorage.getItem('ado_org') || 'pfa';
+    projectInput.value = localStorage.getItem('ado_project') || 'Agile';
+
+    // Password toggle
+    togglePat.addEventListener('click', () => {
+      const type = patInput.getAttribute('type') === 'password' ? 'text' : 'password';
+      patInput.setAttribute('type', type);
+      togglePat.textContent = type === 'password' ? '👁️' : '🔒';
+    });
+
+    let lookupDebounceTimer = null;
+    let currentFeatureLookup = null;
+
+    async function triggerFeatureLookup() {
+      const org = orgInput.value.trim();
+      const project = projectInput.value.trim();
+      const pat = patInput.value.trim();
+      const existingId = existingFeatureIdInput.value.trim();
+
+      if (!existingId) {
+        currentFeatureLookup = null;
+        renderPreview();
+        return;
+      }
+
+      if (!org || !project || !pat) {
+        currentFeatureLookup = {
+          id: existingId,
+          status: 'idle',
+          message: 'Udfyld Org, Projekt og PAT for live opslag'
+        };
+        renderPreview();
+        return;
+      }
+
+      currentFeatureLookup = {
+        id: existingId,
+        status: 'loading'
+      };
+      renderPreview();
+
+      try {
+        const res = await fetch('/api/workitem-lookup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ org, project, pat, id: existingId })
+        });
+        const resText = await res.text();
+        let data;
+        try {
+          data = JSON.parse(resText);
+        } catch {
+          throw new Error(`Serveren returnerede ikke JSON (status ${res.status}). Sørg for at serveren kører på port 3001.`);
+        }
+
+        if (!res.ok) {
+          throw new Error(data.error || 'Kunne ikke finde work item.');
+        }
+
+        currentFeatureLookup = {
+          id: existingId,
+          status: 'success',
+          item: data
+        };
+      } catch (err) {
+        currentFeatureLookup = {
+          id: existingId,
+          status: 'error',
+          error: err.message
+        };
+      }
+      renderPreview();
+    }
+
+    function scheduleLookup() {
+      clearTimeout(lookupDebounceTimer);
+      lookupDebounceTimer = setTimeout(triggerFeatureLookup, 400);
+    }
+
+    // Save inputs
+    orgInput.addEventListener('input', () => {
+      localStorage.setItem('ado_org', orgInput.value.trim());
+      validateForm();
+      scheduleLookup();
+    });
+    projectInput.addEventListener('input', () => {
+      localStorage.setItem('ado_project', projectInput.value.trim());
+      validateForm();
+      scheduleLookup();
+    });
+    patInput.addEventListener('input', () => {
+      validateForm();
+      scheduleLookup();
+    });
+    existingFeatureIdInput.addEventListener('input', () => {
+      scheduleLookup();
+    });
+
+    // File upload handler
+    fileInput.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          jsonInput.value = event.target.result;
+          renderPreview();
+          validateForm();
+        };
+        reader.readAsText(file);
+      }
+    });
+
+    // Sample data loader
+    loadSampleBtn.addEventListener('click', () => {
+      jsonInput.value = JSON.stringify(sampleData, null, 2);
+      renderPreview();
+      validateForm();
+    });
+
+    // Format JSON button
+    formatJsonBtn.addEventListener('click', () => {
+      try {
+        const parsed = JSON.parse(jsonInput.value);
+        jsonInput.value = JSON.stringify(parsed, null, 2);
+        renderPreview();
+      } catch (err) {
+        previewAlert.style.display = 'block';
+        previewAlert.textContent = `Ugyldig JSON: ${err.message}`;
+      }
+    });
+
+    // JSON Input change
+    jsonInput.addEventListener('input', () => {
+      renderPreview();
+      validateForm();
+    });
+
+    function parseData() {
+      const text = jsonInput.value.trim();
+      if (!text) return null;
+      return JSON.parse(text);
+    }
+
+    function validateForm() {
+      let valid = true;
+      const org = orgInput.value.trim();
+      const project = projectInput.value.trim();
+      const pat = patInput.value.trim();
+
+      if (!org || !project || !pat) valid = false;
+
+      try {
+        const data = parseData();
+        if (!data || !Array.isArray(data) || data.length === 0) {
+          valid = false;
+        }
+      } catch {
+        valid = false;
+      }
+
+      importBtn.disabled = !valid;
+    }
+
+    function renderPreview() {
+      const text = jsonInput.value.trim();
+      const existingId = existingFeatureIdInput.value.trim();
+
+      let countFeatures = 0;
+      let countStories = 0;
+      let countTasks = 0;
+
+      let existingFeatureHeaderHtml = '';
+      if (existingId) {
+        if (currentFeatureLookup && currentFeatureLookup.id === existingId) {
+          if (currentFeatureLookup.status === 'loading') {
+            existingFeatureHeaderHtml = `
+              <div class="node-header">
+                <span class="badge badge-existing">⏳ Henter #${escapeHtml(existingId)}...</span>
+                <span class="node-title" style="color: var(--text-muted);">Søger i Azure DevOps...</span>
+              </div>
+              <div class="node-desc">Kontakter Azure DevOps API for at hente titel og detaljer...</div>
+            `;
+          } else if (currentFeatureLookup.status === 'success') {
+            const item = currentFeatureLookup.item;
+            existingFeatureHeaderHtml = `
+              <div class="node-header">
+                <span class="badge badge-existing">🔗 ${escapeHtml(item.type)} #${escapeHtml(item.id)}</span>
+                <span class="node-title" style="color: #58a6ff; font-weight: 700;">${escapeHtml(item.title)}</span>
+                ${item.state ? `<span class="badge" style="background:#21262d;color:var(--text-muted);font-size:0.7rem;">${escapeHtml(item.state)}</span>` : ''}
+              </div>
+            `;
+          } else if (currentFeatureLookup.status === 'error') {
+            existingFeatureHeaderHtml = `
+              <div class="node-header">
+                <span class="badge" style="background:rgba(248,81,73,0.2);color:var(--error-color);">❌ #${escapeHtml(existingId)} ikke fundet</span>
+                <span class="node-title" style="color: var(--error-color); font-size: 0.85rem;">${escapeHtml(currentFeatureLookup.error)}</span>
+              </div>
+            `;
+          } else {
+            existingFeatureHeaderHtml = `
+              <div class="node-header">
+                <span class="badge badge-existing">🔗 Eksisterende Feature #${escapeHtml(existingId)}</span>
+                <span class="node-title">Alle User Stories tilknyttes denne Feature</span>
+              </div>
+            `;
+          }
+        } else {
+          existingFeatureHeaderHtml = `
+            <div class="node-header">
+              <span class="badge badge-existing">🔗 Eksisterende Feature #${escapeHtml(existingId)}</span>
+              <span class="node-title">Alle User Stories tilknyttes denne Feature</span>
+            </div>
+          `;
+        }
+      }
+
+      if (!text) {
+        if (existingId) {
+          treePreview.innerHTML = `
+            <div class="tree-node root-node">
+              ${existingFeatureHeaderHtml}
+              <div style="margin-top: 14px; margin-left: 20px; color: var(--text-muted); font-size: 0.85rem; font-style: italic;">
+                ↳ Indsæt JSON eller klik på "📋 Indsæt Eksempel" for at tilføje User Stories under denne feature.
+              </div>
+            </div>
+          `;
+          previewAlert.style.display = 'none';
+          updateStats(1, 0, 0);
+          statFeatures.textContent = '1 Eksisterende Feature';
+        } else {
+          treePreview.innerHTML = '<div class="empty-state">Indsæt gyldig JSON eller klik på "Indsæt Eksempel" for at se det hierarkiske preview.</div>';
+          previewAlert.style.display = 'none';
+          updateStats(0, 0, 0);
+        }
+        return;
+      }
+
+      let parsed;
+      try {
+        parsed = JSON.parse(text);
+        if (!Array.isArray(parsed)) {
+          throw new Error('Rod-elementet skal være et array af features/stories.');
+        }
+        previewAlert.style.display = 'none';
+      } catch (err) {
+        previewAlert.style.display = 'block';
+        previewAlert.textContent = `JSON Fejl: ${err.message}`;
+        treePreview.innerHTML = `<div class="empty-state" style="color: var(--error-color);">Ugyldig JSON struktur. Ret venligst fejlene.</div>`;
+        updateStats(0, 0, 0);
+        return;
+      }
+
+      let html = '';
+
+      if (existingId) {
+        html += `<div class="tree-node root-node">${existingFeatureHeaderHtml}`;
+      }
+
+      function renderTagsBadge(tags) {
+        if (!tags) return '';
+        const tagArr = Array.isArray(tags) ? tags : String(tags).split(';').map(t => t.trim());
+        return tagArr.filter(Boolean).map(t => `<span class="badge badge-tag">🏷️ ${escapeHtml(t)}</span>`).join(' ');
+      }
+
+      parsed.forEach((feature, fIdx) => {
+        countFeatures++;
+        const stories = feature.userStories || feature.stories || [];
+
+        if (!existingId) {
+          html += `
+            <div class="tree-node root-node">
+              <div class="node-header">
+                <span class="badge badge-feature">Feature</span>
+                <span class="node-title">${escapeHtml(feature.title || 'Uden titel')}</span>
+                ${renderTagsBadge(feature.tags)}
+              </div>
+              ${feature.description ? `<div class="node-desc">${escapeHtml(feature.description)}</div>` : ''}
+          `;
+        }
+
+        stories.forEach((story, sIdx) => {
+          countStories++;
+          const tasks = story.tasks || [];
+
+          html += `
+            <div class="tree-node">
+              <div class="node-header">
+                <span class="badge badge-story">User Story</span>
+                <span class="node-title">${escapeHtml(story.title || 'Uden titel')}</span>
+                ${renderTagsBadge(story.tags)}
+              </div>
+              ${story.description ? `<div class="node-desc">${escapeHtml(story.description)}</div>` : ''}
+          `;
+
+          tasks.forEach((task) => {
+            countTasks++;
+            html += `
+              <div class="tree-node">
+                <div class="node-header">
+                  <span class="badge badge-task">Task</span>
+                  <span class="node-title">${escapeHtml(task.title || 'Uden titel')}</span>
+                  ${renderTagsBadge(task.tags)}
+                </div>
+                ${task.description ? `<div class="node-desc">${escapeHtml(task.description)}</div>` : ''}
+              </div>
+            `;
+          });
+
+          html += `</div>`; // Close story node
+        });
+
+        if (!existingId) {
+          html += `</div>`; // Close feature node
+        }
+      });
+
+      if (existingId) {
+        html += `</div>`; // Close existing root feature node
+      }
+
+      treePreview.innerHTML = html;
+      updateStats(existingId ? 0 : countFeatures, countStories, countTasks);
+      if (existingId) {
+        statFeatures.textContent = '1 Eksisterende Feature';
+      }
+    }
+
+    function updateStats(features, stories, tasks) {
+      statFeatures.textContent = `${features} Feature${features === 1 ? '' : 's'}`;
+      statStories.textContent = `${stories} Stor${stories === 1 ? 'y' : 'ies'}`;
+      statTasks.textContent = `${tasks} Task${tasks === 1 ? '' : 's'}`;
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+
+    // Import Execution
+    importBtn.addEventListener('click', async () => {
+      const org = orgInput.value.trim();
+      const project = projectInput.value.trim();
+      const pat = patInput.value.trim();
+      const existingFeatureId = existingFeatureIdInput.value.trim();
+      const features = parseData();
+
+      if (!org || !project || !pat || !features) return;
+
+      importBtn.disabled = true;
+      btnSpinner.style.display = 'inline-block';
+      btnText.textContent = 'Importerer til Azure DevOps...';
+
+      logPanel.style.display = 'block';
+      logList.innerHTML = '';
+      statusMessage.innerHTML = '<div class="alert alert-success">Opretter forbindelse og starter oprettelse af work items...</div>';
+
+      try {
+        const response = await fetch('/api/import', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            org,
+            project,
+            pat,
+            existingFeatureId: existingFeatureId || undefined,
+            features
+          })
+        });
+        const responseText = await response.text();
+        let data;
+        try {
+          data = JSON.parse(responseText);
+        } catch {
+          throw new Error(`Serveren returnerede ikke JSON (status ${response.status}).`);
+        }
+
+        if (!response.ok) {
+          throw new Error(data.error || 'Server returnerede en fejl.');
+        }
+
+        // Render Results
+        if (data.results && data.results.length > 0) {
+          data.results.forEach(item => {
+            const badgeClass = item.type === 'Feature' ? 'badge-feature' : item.type === 'User Story' ? 'badge-story' : 'badge-task';
+            const logEl = document.createElement('div');
+            logEl.className = 'log-item success';
+            logEl.innerHTML = `
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span class="badge ${badgeClass}">${escapeHtml(item.type)}</span>
+                <span style="font-weight: 600;">#${item.id}</span>
+                <span>${escapeHtml(item.title)}</span>
+              </div>
+              ${item.webUrl ? `<a href="${item.webUrl}" target="_blank" class="log-link">Åbn i ADO ↗</a>` : ''}
+            `;
+            logList.appendChild(logEl);
+          });
+        }
+
+        if (data.errors && data.errors.length > 0) {
+          data.errors.forEach(err => {
+            const logEl = document.createElement('div');
+            logEl.className = 'log-item error';
+            logEl.innerHTML = `
+              <div>
+                <span class="badge" style="background: rgba(248,81,73,0.2); color: var(--error-color);">FEJL [${escapeHtml(err.type)}]</span>
+                <span style="font-weight: 600; margin-left: 8px;">${escapeHtml(err.title)}:</span>
+                <span style="color: var(--text-muted);">${escapeHtml(err.error)}</span>
+              </div>
+            `;
+            logList.appendChild(logEl);
+          });
+        }
+
+        if (data.success) {
+          statusMessage.innerHTML = `<div class="alert alert-success">🎉 Import fuldført! ${data.summary.totalCreated} work items oprettet med succes.</div>`;
+        } else {
+          statusMessage.innerHTML = `<div class="alert alert-error">⚠️ Import fuldført med ${data.summary.totalErrors} fejl. Se listen nedenfor.</div>`;
+        }
+      } catch (err) {
+        statusMessage.innerHTML = `<div class="alert alert-error">❌ Import fejlede: ${escapeHtml(err.message)}</div>`;
+      } finally {
+        importBtn.disabled = false;
+        btnSpinner.style.display = 'none';
+        btnText.textContent = '🚀 Start Import til Azure DevOps';
+      }
+    });
+
+    clearLogsBtn.addEventListener('click', () => {
+      logList.innerHTML = '';
+      logPanel.style.display = 'none';
+    });
+
+    // Initial validation
+    validateForm();
+  </script>
+</body>
+</html>
