@@ -109,21 +109,75 @@ async function createWorkItem({ org, project, pat, type, title, description, tag
  * Validates and retrieves an existing work item
  */
 async function getWorkItem({ org, project, pat, id }) {
-  const url = `https://dev.azure.com/${encodeURIComponent(org)}/${encodeURIComponent(project)}/_apis/wit/workitems/${encodeURIComponent(id)}?api-version=7.1-preview.3`;
+  // Try collection-level first (works across projects), fallback to project-level
+  const urls = [
+    `https://dev.azure.com/${encodeURIComponent(org)}/_apis/wit/workitems/${encodeURIComponent(id)}?api-version=7.1-preview.3`,
+    `https://dev.azure.com/${encodeURIComponent(org)}/${encodeURIComponent(project)}/_apis/wit/workitems/${encodeURIComponent(id)}?api-version=7.1-preview.3`
+  ];
 
-  const response = await fetch(url, {
-    method: 'GET',
-    headers: {
-      'Accept': 'application/json',
-      Authorization: `Basic ${Buffer.from(`:${pat}`).toString('base64')}`
+  let lastResponse = null;
+  for (const url of urls) {
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json',
+        Authorization: `Basic ${Buffer.from(`:${pat}`).toString('base64')}`
+      }
+    });
+
+    if (response.ok) {
+      return await parseAdoResponse(response, { org, project, contextDesc: `Henter work item #${id}` });
     }
-  });
+    lastResponse = response;
+  }
 
-  return await parseAdoResponse(response, {
+  return await parseAdoResponse(lastResponse, {
     org,
     project,
     contextDesc: `Work item #${id} ikke fundet eller utilgængeligt`
   });
+}
+
+/**
+ * Deletes a work item with fallback from permanent purge to soft-delete
+ */
+async function deleteWorkItemAdo({ org, project, pat, id }) {
+  const attempts = [
+    // 1. Collection-level permanent delete
+    `https://dev.azure.com/${encodeURIComponent(org)}/_apis/wit/workitems/${encodeURIComponent(id)}?destroy=true&api-version=7.1-preview.3`,
+    // 2. Collection-level soft delete
+    `https://dev.azure.com/${encodeURIComponent(org)}/_apis/wit/workitems/${encodeURIComponent(id)}?api-version=7.1-preview.3`,
+    // 3. Project-scoped delete
+    `https://dev.azure.com/${encodeURIComponent(org)}/${encodeURIComponent(project)}/_apis/wit/workitems/${encodeURIComponent(id)}?api-version=7.1-preview.3`
+  ];
+
+  let lastError = '';
+  for (const url of attempts) {
+    try {
+      const response = await fetch(url, {
+        method: 'DELETE',
+        headers: {
+          'Accept': 'application/json',
+          Authorization: `Basic ${Buffer.from(`:${pat}`).toString('base64')}`
+        }
+      });
+
+      if (response.ok) {
+        return true;
+      }
+      const errText = await response.text();
+      try {
+        const parsed = JSON.parse(errText);
+        lastError = parsed.message || errText;
+      } catch {
+        lastError = errText;
+      }
+    } catch (e) {
+      lastError = e.message;
+    }
+  }
+
+  throw new Error(lastError || `Kunne ikke slette work item #${id}`);
 }
 
 // POST /api/workitem-lookup
@@ -158,26 +212,8 @@ app.delete('/api/workitem/:id', async (req, res) => {
   }
 
   try {
-    const url = `https://dev.azure.com/${encodeURIComponent(org)}/${encodeURIComponent(project)}/_apis/wit/workitems/${encodeURIComponent(id)}?destroy=true&api-version=7.1-preview.3`;
-    const response = await fetch(url, {
-      method: 'DELETE',
-      headers: {
-        'Accept': 'application/json',
-        Authorization: `Basic ${Buffer.from(`:${pat}`).toString('base64')}`
-      }
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      let message = errorText;
-      try {
-        const parsed = JSON.parse(errorText);
-        message = parsed.message || errorText;
-      } catch {}
-      throw new Error(`Kunne ikke slette #${id}: ${message} (Status ${response.status})`);
-    }
-
-    return res.json({ success: true, id, message: `Work item #${id} blev slettet permanent.` });
+    await deleteWorkItemAdo({ org, project, pat, id });
+    return res.json({ success: true, id, message: `Work item #${id} blev slettet.` });
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
@@ -196,26 +232,8 @@ app.post('/api/workitems/delete', async (req, res) => {
 
   for (const id of ids) {
     try {
-      const url = `https://dev.azure.com/${encodeURIComponent(org)}/${encodeURIComponent(project)}/_apis/wit/workitems/${encodeURIComponent(id)}?destroy=true&api-version=7.1-preview.3`;
-      const response = await fetch(url, {
-        method: 'DELETE',
-        headers: {
-          'Accept': 'application/json',
-          Authorization: `Basic ${Buffer.from(`:${pat}`).toString('base64')}`
-        }
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        let message = errorText;
-        try {
-          const parsed = JSON.parse(errorText);
-          message = parsed.message || errorText;
-        } catch {}
-        errors.push({ id, error: message });
-      } else {
-        deleted.push(id);
-      }
+      await deleteWorkItemAdo({ org, project, pat, id });
+      deleted.push(id);
     } catch (err) {
       errors.push({ id, error: err.message });
     }
